@@ -4,13 +4,14 @@ import (
 	"downtools/downutils"
 	"flag"
 	"fmt"
-	"gopkg.in/yaml.v3"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 // DownloadItem 下载项目结构
@@ -47,16 +48,18 @@ func main() {
 	idleTimeout := flag.Int("idle-timeout", 60, "空闲超时时间（秒）")
 	retries := flag.Int("retries", 3, "下载失败重试次数")
 	keepOld := flag.Bool("keep-old", false, "保留旧文件（重命名为.old）")
+	forceUpdate := flag.Bool("force", false, "强制更新，忽略缓存")
 	flag.Parse()
 
 	// 显示程序信息
-	fmt.Println("自动下载工具 v1.1")
+	fmt.Println("自动下载工具 v1.2")
 	fmt.Printf("配置文件: %s\n", *configFile)
 	fmt.Printf("输出目录: %s\n", *outputDir)
 	fmt.Printf("连接超时: %d秒\n", *connectTimeout)
 	fmt.Printf("空闲超时: %d秒\n", *idleTimeout)
 	fmt.Printf("重试次数: %d次\n", *retries)
-	fmt.Printf("保留旧文件: %v\n\n", *keepOld)
+	fmt.Printf("保留旧文件: %v\n", *keepOld)
+	fmt.Printf("强制更新: %v\n\n", *forceUpdate)
 
 	// 读取配置文件
 	config, err := loadConfig(*configFile)
@@ -70,6 +73,9 @@ func main() {
 		fmt.Printf("创建下载目录失败: %v\n", err)
 		return
 	}
+
+	// 清理过期缓存记录
+	downutils.CleanupExpiredCache()
 
 	// 设置HTTP客户端，只设置连接超时，不设置读取超时
 	transport := &http.Transport{
@@ -103,7 +109,7 @@ func main() {
 			continue
 		}
 
-		success := processGroup(items, groupDir, httpClient, *retries, *keepOld)
+		success := processGroup(items, groupDir, httpClient, *retries, *keepOld, *forceUpdate)
 		totalItems += len(items)
 		successItems += success
 	}
@@ -112,13 +118,16 @@ func main() {
 }
 
 // 处理配置组
-func processGroup(items []DownloadItem, downloadDir string, client *http.Client, retries int, keepOld bool) int {
+func processGroup(items []DownloadItem, downloadDir string, client *http.Client, retries int, keepOld bool, forceUpdate bool) int {
 	successCount := 0
 	for _, item := range items {
 		filePath := filepath.Join(downloadDir, item.File)
 
-		// 检查文件是否存在
-		if downutils.FileExists(filePath) && !item.KeepUpdated {
+		// 检查文件是否存在以及是否需要更新
+		fileExists := downutils.FileExists(filePath)
+		needsUpdate := forceUpdate || !fileExists || (item.KeepUpdated && downutils.NeedsUpdate(filePath))
+
+		if fileExists && !needsUpdate {
 			fmt.Printf("  文件 %s 已存在且不需要更新，跳过下载\n", item.File)
 			successCount++
 			continue
@@ -126,6 +135,7 @@ func processGroup(items []DownloadItem, downloadDir string, client *http.Client,
 
 		fmt.Printf("  开始下载 %s...\n", item.Name)
 		success := false
+		resourceNotFound := false
 
 		// 尝试从每个URL下载
 		for _, url := range item.DownloadURLs {
@@ -145,6 +155,14 @@ func processGroup(items []DownloadItem, downloadDir string, client *http.Client,
 				}
 
 				if err := downutils.DownloadFile(downloadURL, filePath, client, keepOld); err != nil {
+					// 检查是否是404错误
+					if downloadErr, ok := err.(downutils.DownloadError); ok && downloadErr.Type == downutils.ErrResourceNotFound {
+						fmt.Printf("    下载失败: %v\n", err)
+						fmt.Printf("    资源不存在 (404)，请检查配置中的URL是否正确\n")
+						resourceNotFound = true
+						break // 404错误不需要重试
+					}
+
 					fmt.Printf("    下载失败: %v\n", err)
 					// 如果不是最后一次尝试，则等待后重试
 					if attempt < retries {
@@ -162,13 +180,17 @@ func processGroup(items []DownloadItem, downloadDir string, client *http.Client,
 				}
 			}
 
-			if success {
-				break // 当前URL下载成功，不需要尝试下一个URL
+			if success || resourceNotFound {
+				break // 当前URL下载成功或资源不存在，不需要尝试下一个URL
 			}
 		}
 
 		if !success {
-			fmt.Printf("  所有下载源都失败，无法下载 %s\n", item.Name)
+			if resourceNotFound {
+				fmt.Printf("  警告: %s 的资源不存在，请检查配置文件中的URL\n", item.Name)
+			} else {
+				fmt.Printf("  所有下载源都失败，无法下载 %s\n", item.Name)
+			}
 		}
 	}
 	return successCount

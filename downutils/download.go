@@ -9,6 +9,23 @@ import (
 	"time"
 )
 
+// 错误类型常量
+const (
+	// 资源不存在错误（404）
+	ErrResourceNotFound = "RESOURCE_NOT_FOUND"
+)
+
+// 自定义错误类型
+type DownloadError struct {
+	StatusCode int
+	Message    string
+	Type       string
+}
+
+func (e DownloadError) Error() string {
+	return e.Message
+}
+
 // DownloadFile 下载文件
 func DownloadFile(url, filePath string, client *http.Client, keepOld bool) error {
 	// 创建HTTP请求
@@ -29,6 +46,14 @@ func DownloadFile(url, filePath string, client *http.Client, keepOld bool) error
 
 	// 检查响应状态
 	if resp.StatusCode != http.StatusOK {
+		// 对于404错误，返回特殊错误类型
+		if resp.StatusCode == http.StatusNotFound {
+			return DownloadError{
+				StatusCode: resp.StatusCode,
+				Message:    fmt.Sprintf("资源不存在，HTTP状态码: %d (404 Not Found)", resp.StatusCode),
+				Type:       ErrResourceNotFound,
+			}
+		}
 		return fmt.Errorf("HTTP请求失败，状态码: %d", resp.StatusCode)
 	}
 
@@ -288,6 +313,11 @@ func DownloadFile(url, filePath string, client *http.Client, keepOld bool) error
 	// 重命名临时文件为最终文件名
 	if err := os.Rename(tempFilePath, filePath); err != nil {
 		return fmt.Errorf("重命名临时文件失败: %w", err)
+	}
+
+	// 更新文件下载时间缓存
+	if err := UpdateFileDownloadTime(filePath); err != nil {
+		fmt.Printf("    警告: 更新下载缓存失败: %v\n", err)
 	}
 
 	return nil
