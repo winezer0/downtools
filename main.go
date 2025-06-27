@@ -18,7 +18,7 @@ type AppConfig struct {
 	Retries        int    `short:"r" long:"retries" description:"下载失败重试次数" default:"1"`
 	KeepOld        bool   `short:"k" long:"keep-old" description:"保留旧文件（重命名为.old）"`
 	ForceUpdate    bool   `short:"f" long:"force" description:"强制更新，忽略缓存"`
-	ProxyURL       string `short:"p" long:"proxy" description:"代理URL（支持http://和socks5://格式）" default:"socks5://127.0.0.1:10808"`
+	ProxyURL       string `short:"p" long:"proxy" description:"代理URL（支持http://和socks5://格式）" default:""`
 	Version        bool   `short:"v" long:"version" description:"显示版本信息"`
 }
 
