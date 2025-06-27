@@ -1,6 +1,7 @@
 package downutils
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,6 +15,8 @@ import (
 const (
 	// ErrResourceNotFound 资源不存在错误（404）
 	ErrResourceNotFound = "RESOURCE_NOT_FOUND"
+	// ErrLowSpeed 下载速度过低错误
+	ErrLowSpeed = "DOWNLOAD_SPEED_TOO_LOW"
 )
 
 // DownloadError 自定义错误类型
@@ -31,8 +34,10 @@ func (e DownloadError) Error() string {
 const (
 	// MinValidSpeed 最小有效下载速度 (bytes/second)，低于此值视为停滞
 	MinValidSpeed = 10.0
-	// StallCheckInterval 下载停滞检测间隔（秒）
-	StallCheckInterval = 10
+	// MinRequiredSpeed 最小要求下载速度 (bytes/second)，低于此值判定为网络问题
+	MinRequiredSpeed = 1024.0 // 1KB/s
+	// SpeedCheckInterval 下载速度检测间隔（秒）
+	SpeedCheckInterval = 5
 	// ProgressUpdateInterval 下载进度更新间隔（毫秒）
 	ProgressUpdateInterval = 500
 	// DownloadBufferSize 下载缓冲区大小
@@ -41,7 +46,254 @@ const (
 	CacheFileName = ".download_cache.json"
 	// CacheExpireHours 缓存过期时间（小时）
 	CacheExpireHours = 1
+	// LowSpeedDuration 判定低速持续时间（秒）
+	LowSpeedDuration = 15
 )
+
+// ProgressTracker 下载进度跟踪器
+type ProgressTracker struct {
+	BytesCount    *atomic.Int64      // 已下载字节数
+	FileSize      int64              // 文件总大小
+	StartTime     time.Time          // 下载开始时间
+	LastUpdate    time.Time          // 上次更新时间
+	LastSize      int64              // 上次记录的大小
+	Speed         float64            // 当前下载速度
+	LowSpeedCount int                // 低速检测计数
+	Done          chan struct{}      // 完成信号
+	Name          string             // 下载的文件名
+	Cancel        context.CancelFunc // 用于取消下载的函数
+	Ctx           context.Context    // 下载上下文
+	CancelReason  atomic.Value       // 取消原因
+}
+
+// NewProgressTracker 创建新的进度跟踪器
+func NewProgressTracker(fileSize int64, name string) *ProgressTracker {
+	now := time.Now()
+	var counter atomic.Int64
+	ctx, cancel := context.WithCancel(context.Background())
+
+	tracker := &ProgressTracker{
+		BytesCount:    &counter,
+		FileSize:      fileSize,
+		StartTime:     now,
+		LastUpdate:    now,
+		LastSize:      0,
+		Speed:         0,
+		LowSpeedCount: 0,
+		Done:          make(chan struct{}),
+		Name:          name,
+		Ctx:           ctx,
+		Cancel:        cancel,
+	}
+
+	// 初始化取消原因为空字符串
+	tracker.CancelReason.Store("")
+
+	return tracker
+}
+
+// Close 关闭进度跟踪器
+func (pt *ProgressTracker) Close() {
+	close(pt.Done)
+}
+
+// GetCountingWriter 获取计数Writer
+func (pt *ProgressTracker) GetCountingWriter(w io.Writer) io.Writer {
+	return &CountingWriter{
+		Writer:     w,
+		BytesCount: pt.BytesCount,
+	}
+}
+
+// MonitorSpeed 监控下载速度
+func (pt *ProgressTracker) MonitorSpeed() {
+	speedCheckTicker := time.NewTicker(SpeedCheckInterval * time.Second)
+	defer speedCheckTicker.Stop()
+
+	for {
+		select {
+		case <-speedCheckTicker.C:
+			// 检查当前下载速度是否低于最小要求
+			if pt.Speed < MinRequiredSpeed {
+				pt.LowSpeedCount++
+
+				// 提示用户当前速度过低
+				fmt.Printf("\r    警告: 下载速度 (%s/s) 低于最小要求 (%s/s), 已持续 %d 秒...                   ",
+					formatSize(int64(pt.Speed)),
+					formatSize(int64(MinRequiredSpeed)),
+					pt.LowSpeedCount*SpeedCheckInterval)
+
+				// 如果连续多次检测到低速，则取消下载
+				if pt.LowSpeedCount*SpeedCheckInterval >= LowSpeedDuration {
+					pt.CancelReason.Store(ErrLowSpeed)
+
+					// 取消下载
+					pt.Cancel()
+
+					// 显示取消消息
+					fmt.Printf("\r    下载已取消: 速度过低 (%s/s)，低于最小要求 (%s/s)，网络可能存在问题                   \n",
+						formatSize(int64(pt.Speed)),
+						formatSize(int64(MinRequiredSpeed)))
+					return
+				}
+			} else {
+				// 速度恢复正常，重置计数
+				if pt.LowSpeedCount > 0 {
+					fmt.Printf("\r    下载速度已恢复正常: %s/s                                               ",
+						formatSize(int64(pt.Speed)))
+					pt.LowSpeedCount = 0
+				}
+			}
+		case <-pt.Done:
+			return
+		}
+	}
+}
+
+// DisplayProgress 显示下载进度
+func (pt *ProgressTracker) DisplayProgress() {
+	updateInterval := time.Duration(ProgressUpdateInterval) * time.Millisecond
+
+	if pt.FileSize > 0 {
+		// 已知文件大小的情况
+		ticker := time.NewTicker(updateInterval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				pt.updateSpeed()
+				pt.displayKnownSizeProgress()
+			case <-pt.Done:
+				return
+			case <-pt.Ctx.Done():
+				return
+			}
+		}
+	} else {
+		// 未知文件大小的情况
+		ticker := time.NewTicker(updateInterval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				pt.updateSpeed()
+				pt.displayUnknownSizeProgress()
+			case <-pt.Done:
+				return
+			case <-pt.Ctx.Done():
+				return
+			}
+		}
+	}
+}
+
+// updateSpeed 更新下载速度
+func (pt *ProgressTracker) updateSpeed() {
+	// 使用原子变量读取当前下载大小
+	currentSize := pt.BytesCount.Load()
+
+	// 计算下载速度 (bytes/second)
+	currentTime := time.Now()
+	timeElapsed := currentTime.Sub(pt.LastUpdate).Seconds()
+	if timeElapsed > 0 {
+		instantSpeed := float64(currentSize-pt.LastSize) / timeElapsed
+
+		// 平滑速度计算 (指数移动平均)
+		if pt.Speed == 0 {
+			pt.Speed = instantSpeed
+		} else {
+			pt.Speed = 0.7*pt.Speed + 0.3*instantSpeed
+		}
+
+		pt.LastSize = currentSize
+		pt.LastUpdate = currentTime
+	}
+}
+
+// displayKnownSizeProgress 显示已知文件大小的下载进度
+func (pt *ProgressTracker) displayKnownSizeProgress() {
+	currentSize := pt.BytesCount.Load()
+	progress := float64(currentSize) / float64(pt.FileSize) * 100
+	speedStr := formatSize(int64(pt.Speed)) + "/s"
+
+	if pt.Speed > MinValidSpeed {
+		// 只有当速度大于最小有效值时才计算剩余时间
+		remainingBytes := pt.FileSize - currentSize
+		remainingSeconds := float64(remainingBytes) / pt.Speed
+		// 限制最大预估时间为24小时，避免不合理的估计
+		if remainingSeconds > 86400 { // 24小时 = 86400秒
+			remainingSeconds = 86400
+		}
+		remainingTime := time.Duration(remainingSeconds) * time.Second
+
+		fmt.Printf("\r    下载进度: %.1f%% (%s/%s) 速度: %s 剩余时间: %s",
+			progress,
+			formatSize(currentSize),
+			formatSize(pt.FileSize),
+			speedStr,
+			formatDuration(remainingTime))
+	} else if pt.Speed > 0 {
+		// 速度极低但不为0，显示速度但不显示剩余时间
+		fmt.Printf("\r    下载进度: %.1f%% (%s/%s) 速度: %s 剩余时间: 未知",
+			progress,
+			formatSize(currentSize),
+			formatSize(pt.FileSize),
+			speedStr)
+	} else {
+		// 速度为0，等待恢复
+		fmt.Printf("\r    下载进度: %.1f%% (%s/%s) 等待数据传输...",
+			progress,
+			formatSize(currentSize),
+			formatSize(pt.FileSize))
+	}
+}
+
+// displayUnknownSizeProgress 显示未知文件大小的下载进度
+func (pt *ProgressTracker) displayUnknownSizeProgress() {
+	currentSize := pt.BytesCount.Load()
+	speedStr := formatSize(int64(pt.Speed)) + "/s"
+
+	if pt.Speed > MinValidSpeed {
+		fmt.Printf("\r    已下载: %s 速度: %s",
+			formatSize(currentSize),
+			speedStr)
+	} else {
+		fmt.Printf("\r    已下载: %s 等待数据传输...",
+			formatSize(currentSize))
+	}
+}
+
+// DisplaySummary 显示下载摘要
+func (pt *ProgressTracker) DisplaySummary() {
+	// 如果是因为取消而终止的下载，不显示下载摘要
+	if pt.GetCancelReason() != "" {
+		return
+	}
+
+	// 清除进度条行
+	fmt.Print("\r                                                                                          \r")
+
+	// 显示总下载时间和平均速度
+	totalTime := time.Since(pt.StartTime)
+	totalBytes := pt.BytesCount.Load()
+	avgSpeed := float64(totalBytes) / totalTime.Seconds()
+	fmt.Printf("    下载完成: 总大小 %s, 用时 %s, 平均速度 %s/s\n",
+		formatSize(totalBytes),
+		formatDuration(totalTime),
+		formatSize(int64(avgSpeed)))
+}
+
+// GetCancelReason 获取下载取消的原因
+func (pt *ProgressTracker) GetCancelReason() string {
+	return pt.CancelReason.Load().(string)
+}
+
+// SetCancelReason 设置下载取消的原因
+func (pt *ProgressTracker) SetCancelReason(reason string) {
+	pt.CancelReason.Store(reason)
+}
 
 // DownloadFile 下载文件
 func DownloadFile(client *http.Client, downloadUrl, storePath string, keepOldFile bool) error {
@@ -88,6 +340,7 @@ func DownloadFile(client *http.Client, downloadUrl, storePath string, keepOldFil
 
 	// 获取文件大小
 	fileSize := resp.ContentLength
+	fileName := filepath.Base(storePath)
 
 	// 使用defer确保在函数退出时处理临时文件
 	var downloadSuccess bool
@@ -99,198 +352,38 @@ func DownloadFile(client *http.Client, downloadUrl, storePath string, keepOldFil
 		}
 	}()
 
-	// 创建进度显示
-	done := make(chan struct{})
-	defer close(done)
+	// 创建进度跟踪器
+	tracker := NewProgressTracker(fileSize, fileName)
+	defer tracker.Close()
 
-	// 使用原子变量记录已下载字节数，避免频繁的文件系统调用
-	var downloadedBytes atomic.Int64
+	// 启动进度监控协程
+	go tracker.MonitorSpeed()
+	go tracker.DisplayProgress()
 
-	// 下载速度计算变量
-	startTime := time.Now()
-	lastUpdate := startTime
-	var lastSize int64 = 0
-	var speedBytesPerSec float64 = 0
-	var noProgressDuration time.Duration = 0
-	updateInterval := time.Duration(ProgressUpdateInterval) * time.Millisecond
+	// 创建计数Writer
+	countingWriter := tracker.GetCountingWriter(out)
 
-	// 创建一个通道用于检测下载是否停滞
-	stalled := make(chan struct{}, 1)
-	defer close(stalled)
+	// 使用带上下文的缓冲区复制内容，支持取消
+	buf := make([]byte, DownloadBufferSize)
+	_, err = copyBufferWithContext(tracker.Ctx, countingWriter, resp.Body, buf)
 
-	// 监控下载进度，检测是否停滞
-	go func() {
-		var lastProgressSize int64 = 0
-		stallCheckTicker := time.NewTicker(StallCheckInterval * time.Second)
-		defer stallCheckTicker.Stop()
-
-		for {
-			select {
-			case <-stallCheckTicker.C:
-				// 使用原子变量读取当前下载大小
-				currentSize := downloadedBytes.Load()
-
-				if currentSize == lastProgressSize {
-					noProgressDuration += StallCheckInterval * time.Second
-					if noProgressDuration >= 10*time.Second {
-						// 10秒内没有进度，显示警告信息
-						fmt.Printf("\r    下载停滞: 已等待 %s 无数据传输...                    ",
-							formatDuration(noProgressDuration))
-					} else {
-						// 显示短暂停滞信息
-						fmt.Printf("\r    下载似乎暂停了，但仍在等待数据...                    ")
-					}
-				} else {
-					// 有进度，重置停滞计时
-					noProgressDuration = 0
-					lastProgressSize = currentSize
-				}
-			case <-done:
-				return
-			}
+	// 检查是否是因为速度过低取消导致的错误
+	cancelReason := tracker.GetCancelReason()
+	if cancelReason == ErrLowSpeed {
+		return DownloadError{
+			Message: fmt.Sprintf("下载已取消: 速度过低，低于最小要求 (%s/s)，网络可能存在问题",
+				formatSize(int64(MinRequiredSpeed))),
+			Type: ErrLowSpeed,
 		}
-	}()
-
-	go func() {
-		if fileSize > 0 {
-			ticker := time.NewTicker(updateInterval)
-			defer ticker.Stop()
-
-			for {
-				select {
-				case <-ticker.C:
-					// 使用原子变量读取当前下载大小
-					currentSize := downloadedBytes.Load()
-
-					// 计算下载速度 (bytes/second)
-					currentTime := time.Now()
-					timeElapsed := currentTime.Sub(lastUpdate).Seconds()
-					if timeElapsed > 0 {
-						instantSpeed := float64(currentSize-lastSize) / timeElapsed
-
-						// 平滑速度计算 (指数移动平均)
-						if speedBytesPerSec == 0 {
-							speedBytesPerSec = instantSpeed
-						} else {
-							speedBytesPerSec = 0.7*speedBytesPerSec + 0.3*instantSpeed
-						}
-
-						lastSize = currentSize
-						lastUpdate = currentTime
-					}
-
-					// 计算进度百分比
-					progress := float64(currentSize) / float64(fileSize) * 100
-
-					// 格式化速度显示
-					speedStr := formatSize(int64(speedBytesPerSec)) + "/s"
-
-					// 显示进度、速度和剩余时间
-					if speedBytesPerSec > MinValidSpeed {
-						// 只有当速度大于最小有效值时才计算剩余时间
-						remainingBytes := fileSize - currentSize
-						remainingSeconds := float64(remainingBytes) / speedBytesPerSec
-						// 限制最大预估时间为24小时，避免不合理的估计
-						if remainingSeconds > 86400 { // 24小时 = 86400秒
-							remainingSeconds = 86400
-						}
-						remainingTime := time.Duration(remainingSeconds) * time.Second
-
-						fmt.Printf("\r    下载进度: %.1f%% (%s/%s) 速度: %s 剩余时间: %s",
-							progress,
-							formatSize(currentSize),
-							formatSize(fileSize),
-							speedStr,
-							formatDuration(remainingTime))
-					} else if speedBytesPerSec > 0 {
-						// 速度极低但不为0，显示速度但不显示剩余时间
-						fmt.Printf("\r    下载进度: %.1f%% (%s/%s) 速度: %s 剩余时间: 未知",
-							progress,
-							formatSize(currentSize),
-							formatSize(fileSize),
-							speedStr)
-					} else {
-						// 速度为0，等待恢复
-						fmt.Printf("\r    下载进度: %.1f%% (%s/%s) 等待数据传输...",
-							progress,
-							formatSize(currentSize),
-							formatSize(fileSize))
-					}
-
-				case <-done:
-					return
-				}
-			}
-		} else {
-			// 对于未知大小的文件，只显示已下载大小和速度
-			ticker := time.NewTicker(updateInterval)
-			defer ticker.Stop()
-
-			for {
-				select {
-				case <-ticker.C:
-					// 使用原子变量读取当前下载大小
-					currentSize := downloadedBytes.Load()
-
-					// 计算下载速度
-					currentTime := time.Now()
-					timeElapsed := currentTime.Sub(lastUpdate).Seconds()
-					if timeElapsed > 0 {
-						instantSpeed := float64(currentSize-lastSize) / timeElapsed
-						if speedBytesPerSec == 0 {
-							speedBytesPerSec = instantSpeed
-						} else {
-							speedBytesPerSec = 0.7*speedBytesPerSec + 0.3*instantSpeed
-						}
-
-						lastSize = currentSize
-						lastUpdate = currentTime
-					}
-
-					// 格式化速度显示
-					speedStr := formatSize(int64(speedBytesPerSec)) + "/s"
-
-					// 显示已下载大小和速度
-					if speedBytesPerSec > MinValidSpeed {
-						fmt.Printf("\r    已下载: %s 速度: %s",
-							formatSize(currentSize),
-							speedStr)
-					} else {
-						fmt.Printf("\r    已下载: %s 等待数据传输...",
-							formatSize(currentSize))
-					}
-
-				case <-done:
-					return
-				}
-			}
-		}
-	}()
-
-	// 创建一个自定义的Writer，用于跟踪已写入的字节数
-	countingWriter := &CountingWriter{
-		Writer:     out,
-		BytesCount: &downloadedBytes,
 	}
 
-	// 使用缓冲区复制内容，提高效率
-	buf := make([]byte, DownloadBufferSize)
-	_, err = io.CopyBuffer(countingWriter, resp.Body, buf)
+	// 检查其他错误
 	if err != nil {
 		return fmt.Errorf("下载内容失败: %w", err)
 	}
 
-	// 下载完成，清除进度条行
-	fmt.Print("\r                                                                                          \r")
-
-	// 显示总下载时间和平均速度
-	totalTime := time.Since(startTime)
-	totalBytes := downloadedBytes.Load()
-	avgSpeed := float64(totalBytes) / totalTime.Seconds()
-	fmt.Printf("    下载完成: 总大小 %s, 用时 %s, 平均速度 %s/s\n",
-		formatSize(totalBytes),
-		formatDuration(totalTime),
-		formatSize(int64(avgSpeed)))
+	// 显示下载摘要
+	tracker.DisplaySummary()
 
 	// 关闭文件，确保内容写入磁盘
 	if err := out.Close(); err != nil {
@@ -335,6 +428,44 @@ func DownloadFile(client *http.Client, downloadUrl, storePath string, keepOldFil
 	}
 
 	return nil
+}
+
+// copyBufferWithContext 带上下文的数据复制，支持取消操作
+func copyBufferWithContext(ctx context.Context, dst io.Writer, src io.Reader, buf []byte) (written int64, err error) {
+	if buf == nil {
+		buf = make([]byte, 32*1024)
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			// 上下文取消，停止复制
+			return written, ctx.Err()
+		default:
+			// 继续复制
+			nr, er := src.Read(buf)
+			if nr > 0 {
+				nw, ew := dst.Write(buf[0:nr])
+				if nw > 0 {
+					written += int64(nw)
+				}
+				if ew != nil {
+					err = ew
+					return
+				}
+				if nr != nw {
+					err = io.ErrShortWrite
+					return
+				}
+			}
+			if er != nil {
+				if er != io.EOF {
+					err = er
+				}
+				return
+			}
+		}
+	}
 }
 
 // CountingWriter 是一个包装io.Writer的结构，用于跟踪写入的字节数
