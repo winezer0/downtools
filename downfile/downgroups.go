@@ -13,11 +13,15 @@ import (
 func ProcessGroup(client *http.Client, items []ModuleItem, downloadDir string, forceUpdate bool, keepOld bool, retries int) int {
 	successCount := 0
 	for _, item := range items {
-		filePath := filepath.Join(downloadDir, item.FileName)
+		// 组合最终文件路径 // 不是绝对路径，才拼接下载目录
+		storePath := item.FileName
+		if !filepath.IsAbs(item.FileName) {
+			storePath = filepath.Join(downloadDir, item.FileName)
+		}
 
 		// 检查文件是否存在以及是否需要更新
-		fileExists := FileExists(filePath)
-		needsUpdate := forceUpdate || !fileExists || (item.KeepUpdated && NeedsUpdate(filePath))
+		fileExists := FileExists(storePath)
+		needsUpdate := forceUpdate || !fileExists || (item.KeepUpdated && NeedsUpdate(storePath))
 
 		if fileExists && !needsUpdate {
 			fmt.Printf("  文件 %s 已存在且不需要更新，跳过下载\n", item.FileName)
@@ -25,7 +29,14 @@ func ProcessGroup(client *http.Client, items []ModuleItem, downloadDir string, f
 			continue
 		}
 
+		//创建目录并存储结果
+		err := MakeDirs(storePath, true)
+		if err != nil {
+			fmt.Printf("  目录[%s]初始化失败:%v\n", item.FileName, err)
+			continue
+		}
 		fmt.Printf("  开始下载 %s...\n", item.Module)
+
 		success := false
 		resourceNotFound := false
 
@@ -47,7 +58,7 @@ func ProcessGroup(client *http.Client, items []ModuleItem, downloadDir string, f
 				}
 
 				// 使用普通的HTTP请求
-				if err := DownloadFile(client, downloadURL, filePath, keepOld); err != nil {
+				if err := DownloadFile(client, downloadURL, storePath, keepOld); err != nil {
 					// 检查是否是404错误
 					var downloadErr DownloadError
 					fmt.Printf("    下载失败: %v\n", err)
@@ -67,7 +78,7 @@ func ProcessGroup(client *http.Client, items []ModuleItem, downloadDir string, f
 					}
 					break // 所有重试都失败
 				} else {
-					fmt.Printf("    成功下载 %s 到 %s\n", item.Module, filePath)
+					fmt.Printf("    成功下载 %s 到 %s\n", item.Module, storePath)
 					successCount++
 					success = true
 					break // 下载成功，不需要继续重试

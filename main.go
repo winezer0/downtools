@@ -3,11 +3,9 @@ package main
 import (
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
-
 	"github.com/jessevdk/go-flags"
 	"github.com/winezer0/downtools/downfile"
+	"os"
 )
 
 // AppConfig 应用配置结构体
@@ -43,8 +41,8 @@ func (config *AppConfig) DisplayConfig() {
 
 func main() {
 	// 解析命令行参数
-	var config AppConfig
-	parser := flags.NewParser(&config, flags.Default)
+	var appConfig AppConfig
+	parser := flags.NewParser(&appConfig, flags.Default)
 	parser.Name = "downtools"
 	parser.Usage = "[OPTIONS]"
 
@@ -58,30 +56,30 @@ func main() {
 	}
 
 	// 显示版本信息后退出
-	if config.Version {
+	if appConfig.Version {
 		fmt.Printf("自动下载工具 v%s\n", Version)
 		os.Exit(0)
 	}
 
 	// 显示程序信息
-	config.DisplayConfig()
+	appConfig.DisplayConfig()
 
 	// 读取配置文件
-	downloadConfig, err := downfile.LoadConfig(config.ConfigFile)
+	downloadConfig, err := downfile.LoadConfig(appConfig.ConfigFile)
 	if err != nil {
 		fmt.Printf("加载配置文件失败: %v\n", err)
 		return
 	}
 
 	// 清理过期缓存记录
-	downfile.CacheExpireHours = config.CacheExpire
+	downfile.CacheExpireHours = appConfig.CacheExpire
 	downfile.CleanupExpiredCache()
 
 	// 创建HTTP客户端配置
 	clientConfig := &downfile.ClientConfig{
-		ConnectTimeout: config.ConnectTimeout,
-		IdleTimeout:    config.IdleTimeout,
-		ProxyURL:       config.ProxyURL,
+		ConnectTimeout: appConfig.ConnectTimeout,
+		IdleTimeout:    appConfig.IdleTimeout,
+		ProxyURL:       appConfig.ProxyURL,
 	}
 
 	// 创建HTTP客户端
@@ -97,15 +95,7 @@ func main() {
 
 	for groupName, downItems := range downloadConfig {
 		fmt.Printf("\n处理配置组: %s\n", groupName)
-
-		// 为每个组创建子目录
-		groupDir := filepath.Join(config.OutputDir, groupName)
-		if err := os.MkdirAll(groupDir, 0755); err != nil {
-			fmt.Printf("创建目录 %s 失败: %v\n", groupDir, err)
-			continue
-		}
-
-		success := downfile.ProcessGroup(httpClient, downItems, groupDir, config.ForceUpdate, config.KeepOld, config.Retries)
+		success := downfile.ProcessGroup(httpClient, downItems, appConfig.OutputDir, appConfig.ForceUpdate, appConfig.KeepOld, appConfig.Retries)
 		totalItems += len(downItems)
 		successItems += success
 	}

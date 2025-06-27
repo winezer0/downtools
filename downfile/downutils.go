@@ -4,18 +4,19 @@ import (
 	"fmt"
 	"gopkg.in/yaml.v3"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
 
 // LoadConfig 加载配置文件
-func LoadConfig(filename string) (Config, error) {
+func LoadConfig(filename string) (DownConfig, error) {
 	data, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, fmt.Errorf("读取配置文件失败: %w", err)
 	}
 
-	var config Config
+	var config DownConfig
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		return nil, fmt.Errorf("解析YAML失败: %w", err)
 	}
@@ -73,4 +74,19 @@ func formatSize(bytes int64) string {
 	default:
 		return fmt.Sprintf("%d B", bytes)
 	}
+}
+
+func MakeDirs(path string, isFile bool) error {
+	dir := path
+	if isFile {
+		dir = filepath.Dir(path)
+	}
+	_, err := os.Stat(dir)
+	if err == nil {
+		return nil
+	}
+	if os.IsNotExist(err) {
+		return os.MkdirAll(dir, os.ModePerm)
+	}
+	return err
 }

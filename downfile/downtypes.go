@@ -8,8 +8,8 @@ type ModuleItem struct {
 	KeepUpdated  bool     `yaml:"keep-updated"`
 }
 
-// Config 配置文件结构
-type Config map[string][]ModuleItem
+// DownConfig 配置文件结构
+type DownConfig map[string][]ModuleItem
 
 // 常量定义
 const (
