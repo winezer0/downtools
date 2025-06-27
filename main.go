@@ -71,7 +71,7 @@ func main() {
 	}
 
 	// 清理过期缓存记录
-	downfile.CleanupExpiredCache(24 * 7)
+	downfile.CleanupExpiredCache(downfile.CacheExpireHours)
 
 	// 创建HTTP客户端配置
 	clientConfig := &downfile.ClientConfig{

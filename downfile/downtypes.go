@@ -26,7 +26,7 @@ const (
 	// CacheFileName 缓存文件名
 	CacheFileName = ".download_cache.json"
 	// CacheExpireHours 缓存过期时间（小时）
-	CacheExpireHours = 1
+	CacheExpireHours = 24
 )
 
 // 错误类型常量
