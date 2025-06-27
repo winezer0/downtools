@@ -11,11 +11,11 @@ import (
 
 // 错误类型常量
 const (
-	// 资源不存在错误（404）
+	// ErrResourceNotFound 资源不存在错误（404）
 	ErrResourceNotFound = "RESOURCE_NOT_FOUND"
 )
 
-// 自定义错误类型
+// DownloadError 自定义错误类型
 type DownloadError struct {
 	StatusCode int
 	Message    string
@@ -26,10 +26,38 @@ func (e DownloadError) Error() string {
 	return e.Message
 }
 
+// 常量定义
+const (
+	// MinValidSpeed 最小有效下载速度 (bytes/second)，低于此值视为停滞
+	MinValidSpeed = 10.0
+	// StallCheckInterval 下载停滞检测间隔（秒）
+	StallCheckInterval = 10
+	// ProgressUpdateInterval 下载进度更新间隔（毫秒）
+	ProgressUpdateInterval = 500
+	// DownloadBufferSize 下载缓冲区大小
+	DownloadBufferSize = 32 * 1024 // 32KB
+	// CacheFileName 缓存文件名
+	CacheFileName = ".download_cache.json"
+	// CacheExpireHours 缓存过期时间（小时）
+	CacheExpireHours = 1
+)
+
 // DownloadFile 下载文件
-func DownloadFile(url, filePath string, client *http.Client, keepOld bool) error {
+func DownloadFile(client *http.Client, downloadUrl, storePath string, keepOldFile bool) error {
+	// 创建目标文件的目录（如果不存在）
+	if err := os.MkdirAll(filepath.Dir(storePath), 0755); err != nil {
+		return fmt.Errorf("创建目录失败: %w", err)
+	}
+
+	// 创建临时文件（使用唯一名称避免冲突）
+	tempFile := storePath + fmt.Sprintf(".%d.download", time.Now().UnixNano())
+	out, err := os.Create(tempFile)
+	if err != nil {
+		return fmt.Errorf("创建临时文件失败: %w", err)
+	}
+
 	// 创建HTTP请求
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", downloadUrl, nil)
 	if err != nil {
 		return err
 	}
@@ -60,26 +88,13 @@ func DownloadFile(url, filePath string, client *http.Client, keepOld bool) error
 	// 获取文件大小
 	fileSize := resp.ContentLength
 
-	// 创建目标文件的目录（如果不存在）
-	dir := filepath.Dir(filePath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("创建目录失败: %w", err)
-	}
-
-	// 创建临时文件（使用唯一名称避免冲突）
-	tempFilePath := filePath + fmt.Sprintf(".%d.download", time.Now().UnixNano())
-	out, err := os.Create(tempFilePath)
-	if err != nil {
-		return fmt.Errorf("创建临时文件失败: %w", err)
-	}
-
 	// 使用defer确保在函数退出时处理临时文件
 	var downloadSuccess bool
 	defer func() {
 		out.Close()
 		if !downloadSuccess {
 			// 下载失败，删除临时文件
-			os.Remove(tempFilePath)
+			os.Remove(tempFile)
 		}
 	}()
 
@@ -116,8 +131,8 @@ func DownloadFile(url, filePath string, client *http.Client, keepOld bool) error
 				currentSize := info.Size()
 				if currentSize == lastProgressSize {
 					noProgressDuration += StallCheckInterval * time.Second
-					if noProgressDuration >= 30*time.Second {
-						// 30秒内没有进度，显示警告信息
+					if noProgressDuration >= 10*time.Second {
+						// 10秒内没有进度，显示警告信息
 						fmt.Printf("\r    下载停滞: 已等待 %s 无数据传输...                    ",
 							formatDuration(noProgressDuration))
 					} else {
@@ -287,10 +302,10 @@ func DownloadFile(url, filePath string, client *http.Client, keepOld bool) error
 	downloadSuccess = true
 
 	// 处理旧文件（如果存在）
-	if FileExists(filePath) {
-		if keepOld {
+	if FileExists(storePath) {
+		if keepOldFile {
 			// 保留旧文件，重命名为.old
-			oldFilePath := filePath + ".old"
+			oldFilePath := storePath + ".old"
 			// 如果已经存在.old文件，先删除它
 			if FileExists(oldFilePath) {
 				if err := os.Remove(oldFilePath); err != nil {
@@ -298,26 +313,26 @@ func DownloadFile(url, filePath string, client *http.Client, keepOld bool) error
 				}
 			}
 			// 重命名当前文件为.old
-			if err := os.Rename(filePath, oldFilePath); err != nil {
+			if err := os.Rename(storePath, oldFilePath); err != nil {
 				return fmt.Errorf("备份旧文件失败: %w", err)
 			}
 			fmt.Printf("    已备份旧文件为: %s\n", oldFilePath)
 		} else {
 			// 不保留旧文件，直接删除
-			if err := os.Remove(filePath); err != nil {
-				return fmt.Errorf("删除旧文件失败: %w", err)
+			if err := os.Remove(storePath); err != nil {
+				return fmt.Errorf("错误:删除旧文件失败: %w", err)
 			}
 		}
 	}
 
 	// 重命名临时文件为最终文件名
-	if err := os.Rename(tempFilePath, filePath); err != nil {
-		return fmt.Errorf("重命名临时文件失败: %w", err)
+	if err := os.Rename(tempFile, storePath); err != nil {
+		return fmt.Errorf("错误: 重命名临时文件失败: %w", err)
 	}
 
 	// 更新文件下载时间缓存
-	if err := UpdateFileDownloadTime(filePath); err != nil {
-		fmt.Printf("    警告: 更新下载缓存失败: %v\n", err)
+	if err := UpdateFileDownloadTime(storePath); err != nil {
+		fmt.Printf("    错误: 更新下载缓存失败: %v\n", err)
 	}
 
 	return nil
