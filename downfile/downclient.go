@@ -39,7 +39,6 @@ func CreateHTTPClient(config *ClientConfig) (*http.Client, error) {
 			return nil, fmt.Errorf("解析代理URL失败: %w", err)
 		}
 		proxyFunc = http.ProxyURL(proxyURL)
-		fmt.Printf("已配置代理: %s\n", config.ProxyURL)
 	} else {
 		proxyFunc = http.ProxyFromEnvironment
 	}
