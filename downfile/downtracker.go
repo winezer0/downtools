@@ -3,8 +3,46 @@ package downfile
 import (
 	"fmt"
 	"io"
+	"sync/atomic"
 	"time"
 )
+
+// ProgressTracker 下载进度跟踪器
+type ProgressTracker struct {
+	BytesCount   *atomic.Int64 // 已下载字节数
+	FileSize     int64         // 文件总大小
+	StartTime    time.Time     // 下载开始时间
+	LastUpdate   time.Time     // 上次更新时间
+	LastSize     int64         // 上次记录的大小
+	Speed        float64       // 当前下载速度
+	Done         chan struct{} // 完成信号
+	Name         string        // 下载的文件名
+	Cancel       func()        // 用于取消下载的函数
+	CancelReason atomic.Value  // 取消原因
+}
+
+// NewProgressTracker 创建新的进度跟踪器
+func NewProgressTracker(fileSize int64, name string) *ProgressTracker {
+	now := time.Now()
+	var counter atomic.Int64
+
+	tracker := &ProgressTracker{
+		BytesCount: &counter,
+		FileSize:   fileSize,
+		StartTime:  now,
+		LastUpdate: now,
+		LastSize:   0,
+		Speed:      0,
+		Done:       make(chan struct{}),
+		Name:       name,
+		Cancel:     func() {}, // 默认空函数
+	}
+
+	// 初始化取消原因为空字符串
+	tracker.CancelReason.Store("")
+
+	return tracker
+}
 
 // Close 关闭进度跟踪器
 func (pt *ProgressTracker) Close() {
@@ -63,8 +101,6 @@ func (pt *ProgressTracker) DisplayProgress() {
 				pt.displayKnownSizeProgress()
 			case <-pt.Done:
 				return
-			case <-pt.Ctx.Done():
-				return
 			}
 		}
 	} else {
@@ -78,8 +114,6 @@ func (pt *ProgressTracker) DisplayProgress() {
 				pt.updateSpeed()
 				pt.displayUnknownSizeProgress()
 			case <-pt.Done:
-				return
-			case <-pt.Ctx.Done():
 				return
 			}
 		}

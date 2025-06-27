@@ -1,7 +1,6 @@
 package downfile
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,6 +9,17 @@ import (
 	"sync/atomic"
 	"time"
 )
+
+// DownloadError 自定义错误类型
+type DownloadError struct {
+	StatusCode int
+	Message    string
+	Type       string
+}
+
+func (e DownloadError) Error() string {
+	return e.Message
+}
 
 // DownloadFile 下载文件
 func DownloadFile(client *http.Client, downloadUrl, storePath string, keepOldFile bool) error {
@@ -79,9 +89,9 @@ func DownloadFile(client *http.Client, downloadUrl, storePath string, keepOldFil
 	// 创建计数Writer
 	countingWriter := tracker.GetCountingWriter(out)
 
-	// 使用带上下文的缓冲区复制内容，支持取消
+	// 复制内容，支持取消
 	buf := make([]byte, DownloadBufferSize)
-	_, err = copyBufferWithContext(tracker.Ctx, countingWriter, resp.Body, buf)
+	_, err = copyBuffer(countingWriter, resp.Body, buf)
 
 	// 检查是否是因为速度过低取消导致的错误
 	cancelReason := tracker.GetCancelReason()
@@ -146,44 +156,6 @@ func DownloadFile(client *http.Client, downloadUrl, storePath string, keepOldFil
 	return nil
 }
 
-// copyBufferWithContext 带上下文的数据复制，支持取消操作
-func copyBufferWithContext(ctx context.Context, dst io.Writer, src io.Reader, buf []byte) (written int64, err error) {
-	if buf == nil {
-		buf = make([]byte, 32*1024)
-	}
-
-	for {
-		select {
-		case <-ctx.Done():
-			// 上下文取消，停止复制
-			return written, ctx.Err()
-		default:
-			// 继续复制
-			nr, er := src.Read(buf)
-			if nr > 0 {
-				nw, ew := dst.Write(buf[0:nr])
-				if nw > 0 {
-					written += int64(nw)
-				}
-				if ew != nil {
-					err = ew
-					return
-				}
-				if nr != nw {
-					err = io.ErrShortWrite
-					return
-				}
-			}
-			if er != nil {
-				if er != io.EOF {
-					err = er
-				}
-				return
-			}
-		}
-	}
-}
-
 // CountingWriter 是一个包装io.Writer的结构，用于跟踪写入的字节数
 type CountingWriter struct {
 	Writer     io.Writer
@@ -197,4 +169,35 @@ func (w *CountingWriter) Write(p []byte) (n int, err error) {
 		w.BytesCount.Add(int64(n))
 	}
 	return n, err
+}
+
+// copyBuffer 标准的数据复制
+func copyBuffer(dst io.Writer, src io.Reader, buf []byte) (written int64, err error) {
+	if buf == nil {
+		buf = make([]byte, 32*1024)
+	}
+
+	for {
+		nr, er := src.Read(buf)
+		if nr > 0 {
+			nw, ew := dst.Write(buf[0:nr])
+			if nw > 0 {
+				written += int64(nw)
+			}
+			if ew != nil {
+				err = ew
+				return
+			}
+			if nr != nw {
+				err = io.ErrShortWrite
+				return
+			}
+		}
+		if er != nil {
+			if er != io.EOF {
+				err = er
+			}
+			return
+		}
+	}
 }
