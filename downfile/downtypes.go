@@ -1,7 +1,7 @@
 package downfile
 
-// ModuleItem 下载项目结构
-type ModuleItem struct {
+// DownItem 下载项目结构
+type DownItem struct {
 	Module       string   `yaml:"module"`
 	FileName     string   `yaml:"filename"`
 	DownloadURLs []string `yaml:"download-urls"`
@@ -9,7 +9,7 @@ type ModuleItem struct {
 }
 
 // DownConfig 配置文件结构
-type DownConfig map[string][]ModuleItem
+type DownConfig map[string][]DownItem
 
 // 常量定义
 const (

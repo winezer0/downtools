@@ -4,20 +4,16 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"path/filepath"
 	"strings"
 	"time"
 )
 
 // ProcessDownItems 处理配置组
-func ProcessDownItems(client *http.Client, items []ModuleItem, downloadDir string, forceUpdate bool, keepOld bool, retries int) int {
+func ProcessDownItems(client *http.Client, items []DownItem, downloadDir string, forceUpdate bool, keepOld bool, retries int) int {
 	successCount := 0
 	for _, item := range items {
 		// 组合最终文件路径 // 不是绝对路径，才拼接下载目录
-		storePath := item.FileName
-		if !filepath.IsAbs(item.FileName) {
-			storePath = filepath.Join(downloadDir, item.FileName)
-		}
+		storePath := GetItemFilePath(item, downloadDir)
 
 		// 检查文件是否存在以及是否需要更新
 		fileExists := FileExists(storePath)
