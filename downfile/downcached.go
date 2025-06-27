@@ -1,4 +1,4 @@
-package downutils
+package downfile
 
 import (
 	"encoding/json"

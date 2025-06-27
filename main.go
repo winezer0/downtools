@@ -1,6 +1,7 @@
 package main
 
 import (
+	"downtools/downfile"
 	"downtools/downutils"
 	"errors"
 	"flag"
@@ -35,7 +36,7 @@ func main() {
 	fmt.Printf("启用强制更新: %v\n\n", *forceUpdate)
 
 	// 读取配置文件
-	config, err := downutils.LoadConfig(*configFile)
+	config, err := downfile.LoadConfig(*configFile)
 	if err != nil {
 		fmt.Printf("加载配置文件失败: %v\n", err)
 		return
@@ -48,7 +49,7 @@ func main() {
 	}
 
 	// 清理过期缓存记录
-	downutils.CleanupExpiredCache(24 * 7)
+	downfile.CleanupExpiredCache(24 * 7)
 
 	// 设置HTTP客户端，只设置连接超时，不设置读取超时
 	transport := &http.Transport{
@@ -91,14 +92,14 @@ func main() {
 }
 
 // 处理配置组
-func processGroup(client *http.Client, items []downutils.ModuleItem, downloadDir string, forceUpdate bool, keepOld bool, retries int) int {
+func processGroup(client *http.Client, items []downfile.ModuleItem, downloadDir string, forceUpdate bool, keepOld bool, retries int) int {
 	successCount := 0
 	for _, item := range items {
 		filePath := filepath.Join(downloadDir, item.FileName)
 
 		// 检查文件是否存在以及是否需要更新
-		fileExists := downutils.FileExists(filePath)
-		needsUpdate := forceUpdate || !fileExists || (item.KeepUpdated && downutils.NeedsUpdate(filePath, downutils.CacheExpireHours))
+		fileExists := downfile.FileExists(filePath)
+		needsUpdate := forceUpdate || !fileExists || (item.KeepUpdated && downfile.NeedsUpdate(filePath, downfile.CacheExpireHours))
 
 		if fileExists && !needsUpdate {
 			fmt.Printf("  文件 %s 已存在且不需要更新，跳过下载\n", item.FileName)
@@ -115,7 +116,7 @@ func processGroup(client *http.Client, items []downutils.ModuleItem, downloadDir
 			// 处理GitHub URL
 			downloadURL := url
 			if strings.Contains(url, "github.com") && strings.Contains(url, "/blob/") {
-				downloadURL = downutils.ConvertGitHubURL(url)
+				downloadURL = downfile.ConvertGitHubURL(url)
 				fmt.Printf("    转换GitHub URL: %s -> %s\n", url, downloadURL)
 			}
 
@@ -127,12 +128,12 @@ func processGroup(client *http.Client, items []downutils.ModuleItem, downloadDir
 					fmt.Printf("    尝试从 %s 下载...\n", downloadURL)
 				}
 
-				if err := downutils.DownloadFile(client, downloadURL, filePath, keepOld); err != nil {
+				if err := downfile.DownloadFile(client, downloadURL, filePath, keepOld); err != nil {
 					// 检查是否是404错误
-					var downloadErr downutils.DownloadError
+					var downloadErr downfile.DownloadError
 					fmt.Printf("    下载失败: %v\n", err)
 
-					if errors.As(err, &downloadErr) && downloadErr.Type == downutils.ErrResourceNotFound {
+					if errors.As(err, &downloadErr) && downloadErr.Type == downfile.ErrResourceNotFound {
 						fmt.Printf("    资源不存在 (404)，请检查配置中的URL是否正确:%v\n", err)
 						resourceNotFound = true
 						break // 404错误不需要重试
