@@ -35,34 +35,11 @@ func DownloadFile(client *http.Client, downloadUrl, storePath string, keepOldFil
 		return fmt.Errorf("创建临时文件失败: %w", err)
 	}
 
-	// 创建HTTP请求
-	req, err := http.NewRequest("GET", downloadUrl, nil)
+	resp, err := httpGet(client, downloadUrl, err)
 	if err != nil {
 		return err
 	}
-
-	// 设置User-Agent以避免某些服务器的限制
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
-
-	// 发送请求
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("HTTP请求失败: %w", err)
-	}
 	defer resp.Body.Close()
-
-	// 检查响应状态
-	if resp.StatusCode != http.StatusOK {
-		// 对于404错误，返回特殊错误类型
-		if resp.StatusCode == http.StatusNotFound {
-			return DownloadError{
-				StatusCode: resp.StatusCode,
-				Message:    fmt.Sprintf("资源不存在，HTTP状态码: %d (404 Not Found)", resp.StatusCode),
-				Type:       ErrResourceNotFound,
-			}
-		}
-		return fmt.Errorf("HTTP请求失败，状态码: %d", resp.StatusCode)
-	}
 
 	// 获取文件大小
 	fileSize := resp.ContentLength
@@ -154,6 +131,37 @@ func DownloadFile(client *http.Client, downloadUrl, storePath string, keepOldFil
 	}
 
 	return nil
+}
+
+func httpGet(client *http.Client, downloadUrl string, err error) (*http.Response, error) {
+	// 创建HTTP请求
+	req, err := http.NewRequest("GET", downloadUrl, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// 设置User-Agent以避免某些服务器的限制
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
+
+	// 发送请求
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("HTTP请求失败: %w", err)
+	}
+
+	// 检查响应状态
+	if resp.StatusCode != http.StatusOK {
+		// 对于404错误，返回特殊错误类型
+		if resp.StatusCode == http.StatusNotFound {
+			return nil, DownloadError{
+				StatusCode: resp.StatusCode,
+				Message:    fmt.Sprintf("资源不存在，HTTP状态码: %d (404 Not Found)", resp.StatusCode),
+				Type:       ErrResourceNotFound,
+			}
+		}
+		return nil, fmt.Errorf("HTTP请求失败，状态码: %d", resp.StatusCode)
+	}
+	return resp, nil
 }
 
 // CountingWriter 是一个包装io.Writer的结构，用于跟踪写入的字节数
