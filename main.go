@@ -22,7 +22,7 @@ type AppConfig struct {
 	Version        bool    `short:"v" long:"version" description:"显示版本信息"`
 }
 
-const Version = "1.3.1"
+const Version = "v0.0.3"
 
 // DisplayConfig 显示应用配置信息
 func (config *AppConfig) DisplayConfig() {
@@ -95,7 +95,7 @@ func main() {
 
 	for groupName, downItems := range downloadConfig {
 		fmt.Printf("\n处理配置组: %s\n", groupName)
-		success := downfile.ProcessGroup(httpClient, downItems, appConfig.OutputDir, appConfig.ForceUpdate, appConfig.KeepOld, appConfig.Retries)
+		success := downfile.ProcessDownItems(httpClient, downItems, appConfig.OutputDir, appConfig.ForceUpdate, appConfig.KeepOld, appConfig.Retries)
 		totalItems += len(downItems)
 		successItems += success
 	}

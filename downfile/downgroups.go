@@ -9,8 +9,8 @@ import (
 	"time"
 )
 
-// ProcessGroup 处理配置组
-func ProcessGroup(client *http.Client, items []ModuleItem, downloadDir string, forceUpdate bool, keepOld bool, retries int) int {
+// ProcessDownItems 处理配置组
+func ProcessDownItems(client *http.Client, items []ModuleItem, downloadDir string, forceUpdate bool, keepOld bool, retries int) int {
 	successCount := 0
 	for _, item := range items {
 		// 组合最终文件路径 // 不是绝对路径，才拼接下载目录
