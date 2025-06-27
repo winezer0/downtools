@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"time"
 )
 
@@ -102,6 +103,9 @@ func DownloadFile(client *http.Client, downloadUrl, storePath string, keepOldFil
 	done := make(chan struct{})
 	defer close(done)
 
+	// 使用原子变量记录已下载字节数，避免频繁的文件系统调用
+	var downloadedBytes atomic.Int64
+
 	// 下载速度计算变量
 	startTime := time.Now()
 	lastUpdate := startTime
@@ -123,12 +127,9 @@ func DownloadFile(client *http.Client, downloadUrl, storePath string, keepOldFil
 		for {
 			select {
 			case <-stallCheckTicker.C:
-				info, err := out.Stat()
-				if err != nil {
-					continue
-				}
+				// 使用原子变量读取当前下载大小
+				currentSize := downloadedBytes.Load()
 
-				currentSize := info.Size()
 				if currentSize == lastProgressSize {
 					noProgressDuration += StallCheckInterval * time.Second
 					if noProgressDuration >= 10*time.Second {
@@ -158,15 +159,11 @@ func DownloadFile(client *http.Client, downloadUrl, storePath string, keepOldFil
 			for {
 				select {
 				case <-ticker.C:
-					info, err := out.Stat()
-					if err != nil {
-						continue
-					}
-
-					currentTime := time.Now()
-					currentSize := info.Size()
+					// 使用原子变量读取当前下载大小
+					currentSize := downloadedBytes.Load()
 
 					// 计算下载速度 (bytes/second)
+					currentTime := time.Now()
 					timeElapsed := currentTime.Sub(lastUpdate).Seconds()
 					if timeElapsed > 0 {
 						instantSpeed := float64(currentSize-lastSize) / timeElapsed
@@ -232,15 +229,11 @@ func DownloadFile(client *http.Client, downloadUrl, storePath string, keepOldFil
 			for {
 				select {
 				case <-ticker.C:
-					info, err := out.Stat()
-					if err != nil {
-						continue
-					}
-
-					currentTime := time.Now()
-					currentSize := info.Size()
+					// 使用原子变量读取当前下载大小
+					currentSize := downloadedBytes.Load()
 
 					// 计算下载速度
+					currentTime := time.Now()
 					timeElapsed := currentTime.Sub(lastUpdate).Seconds()
 					if timeElapsed > 0 {
 						instantSpeed := float64(currentSize-lastSize) / timeElapsed
@@ -274,9 +267,15 @@ func DownloadFile(client *http.Client, downloadUrl, storePath string, keepOldFil
 		}
 	}()
 
+	// 创建一个自定义的Writer，用于跟踪已写入的字节数
+	countingWriter := &CountingWriter{
+		Writer:     out,
+		BytesCount: &downloadedBytes,
+	}
+
 	// 使用缓冲区复制内容，提高效率
 	buf := make([]byte, DownloadBufferSize)
-	_, err = io.CopyBuffer(out, resp.Body, buf)
+	_, err = io.CopyBuffer(countingWriter, resp.Body, buf)
 	if err != nil {
 		return fmt.Errorf("下载内容失败: %w", err)
 	}
@@ -286,10 +285,10 @@ func DownloadFile(client *http.Client, downloadUrl, storePath string, keepOldFil
 
 	// 显示总下载时间和平均速度
 	totalTime := time.Since(startTime)
-	info, _ := out.Stat()
-	avgSpeed := float64(info.Size()) / totalTime.Seconds()
+	totalBytes := downloadedBytes.Load()
+	avgSpeed := float64(totalBytes) / totalTime.Seconds()
 	fmt.Printf("    下载完成: 总大小 %s, 用时 %s, 平均速度 %s/s\n",
-		formatSize(info.Size()),
+		formatSize(totalBytes),
 		formatDuration(totalTime),
 		formatSize(int64(avgSpeed)))
 
@@ -336,4 +335,19 @@ func DownloadFile(client *http.Client, downloadUrl, storePath string, keepOldFil
 	}
 
 	return nil
+}
+
+// CountingWriter 是一个包装io.Writer的结构，用于跟踪写入的字节数
+type CountingWriter struct {
+	Writer     io.Writer
+	BytesCount *atomic.Int64
+}
+
+// Write 实现io.Writer接口，并原子地更新计数器
+func (w *CountingWriter) Write(p []byte) (n int, err error) {
+	n, err = w.Writer.Write(p)
+	if n > 0 {
+		w.BytesCount.Add(int64(n))
+	}
+	return n, err
 }
