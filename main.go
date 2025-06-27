@@ -2,7 +2,6 @@ package main
 
 import (
 	"downtools/downfile"
-	"downtools/downutils"
 	"errors"
 	"flag"
 	"fmt"
