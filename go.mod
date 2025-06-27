@@ -1,4 +1,4 @@
-module downtools
+module github.com/winezer0/downtools
 
 go 1.21
 

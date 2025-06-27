@@ -1,10 +1,10 @@
 package main
 
 import (
-	"downtools/downfile"
 	"errors"
 	"fmt"
 	"github.com/jessevdk/go-flags"
+	"github.com/winezer0/downtools/downfile"
 	"os"
 	"path/filepath"
 )
