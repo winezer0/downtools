@@ -17,7 +17,7 @@ func ProcessGroup(client *http.Client, items []ModuleItem, downloadDir string, f
 
 		// 检查文件是否存在以及是否需要更新
 		fileExists := FileExists(filePath)
-		needsUpdate := forceUpdate || !fileExists || (item.KeepUpdated && NeedsUpdate(filePath, CacheExpireHours))
+		needsUpdate := forceUpdate || !fileExists || (item.KeepUpdated && NeedsUpdate(filePath))
 
 		if fileExists && !needsUpdate {
 			fmt.Printf("  文件 %s 已存在且不需要更新，跳过下载\n", item.FileName)

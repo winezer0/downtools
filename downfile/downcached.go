@@ -91,7 +91,7 @@ func UpdateFileDownloadTime(filePath string) error {
 }
 
 // CleanupExpiredCache 清理过期缓存记录
-func CleanupExpiredCache(limitHours float64) {
+func CleanupExpiredCache() {
 	cache := LoadDownloadCache()
 	now := time.Now()
 	changed := false
@@ -99,7 +99,7 @@ func CleanupExpiredCache(limitHours float64) {
 	// 检查每个文件记录
 	for path, lastDownload := range cache.Files {
 		// 如果文件不存在或者时间超过7天，从缓存中删除
-		if !FileExists(path) || now.Sub(lastDownload).Hours() > limitHours { // 7天 = 168小时
+		if !FileExists(path) || now.Sub(lastDownload).Hours() > CacheExpireHours { // 7天 = 168小时
 			delete(cache.Files, path)
 			changed = true
 		}
@@ -112,7 +112,7 @@ func CleanupExpiredCache(limitHours float64) {
 }
 
 // NeedsUpdate 检查文件是否需要更新
-func NeedsUpdate(filePath string, cacheExpireHours float64) bool {
+func NeedsUpdate(filePath string) bool {
 	// 如果文件不存在，需要下载
 	if !FileExists(filePath) {
 		return true
@@ -136,5 +136,5 @@ func NeedsUpdate(filePath string, cacheExpireHours float64) bool {
 	}
 
 	// 检查是否超过缓存过期时间
-	return time.Since(lastDownload).Hours() > cacheExpireHours
+	return time.Since(lastDownload).Hours() > CacheExpireHours
 }

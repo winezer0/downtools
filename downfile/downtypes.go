@@ -23,11 +23,13 @@ const (
 	ProgressUpdateInterval = 500
 	// DownloadBufferSize 下载缓冲区大小
 	DownloadBufferSize = 32 * 1024 // 32KB
-	// CacheFileName 缓存文件名
-	CacheFileName = ".download_cache.json"
-	// CacheExpireHours 缓存过期时间（小时）
-	CacheExpireHours = 24
 )
+
+// CacheExpireHours 缓存过期时间（小时）
+var CacheExpireHours = 24.0
+
+// CacheFileName 缓存文件名
+var CacheFileName = ".download_cache.json"
 
 // 错误类型常量
 const (

@@ -3,23 +3,25 @@ package main
 import (
 	"errors"
 	"fmt"
-	"github.com/jessevdk/go-flags"
-	"github.com/winezer0/downtools/downfile"
 	"os"
 	"path/filepath"
+
+	"github.com/jessevdk/go-flags"
+	"github.com/winezer0/downtools/downfile"
 )
 
 // AppConfig 应用配置结构体
 type AppConfig struct {
-	ConfigFile     string `short:"c" long:"config" description:"配置文件路径" default:"config.yaml"`
-	OutputDir      string `short:"o" long:"output" description:"下载文件保存目录" default:"downloads"`
-	ConnectTimeout int    `short:"t" long:"connect-timeout" description:"连接超时时间（秒）" default:"10"`
-	IdleTimeout    int    `short:"T" long:"idle-timeout" description:"空闲超时时间（秒）" default:"60"`
-	Retries        int    `short:"r" long:"retries" description:"下载失败重试次数" default:"1"`
-	KeepOld        bool   `short:"k" long:"keep-old" description:"保留旧文件（重命名为.old）"`
-	ForceUpdate    bool   `short:"f" long:"force" description:"强制更新，忽略缓存"`
-	ProxyURL       string `short:"p" long:"proxy" description:"代理URL（支持http://和socks5://格式）" default:""`
-	Version        bool   `short:"v" long:"version" description:"显示版本信息"`
+	ConfigFile     string  `short:"c" long:"config" description:"配置文件路径" default:"config.yaml"`
+	OutputDir      string  `short:"o" long:"output" description:"下载文件保存目录" default:"downloads"`
+	ConnectTimeout int     `short:"t" long:"connect-timeout" description:"连接超时时间（秒）" default:"10"`
+	IdleTimeout    int     `short:"T" long:"idle-timeout" description:"空闲超时时间（秒）" default:"60"`
+	Retries        int     `short:"r" long:"retries" description:"下载失败重试次数" default:"1"`
+	KeepOld        bool    `short:"k" long:"keep-old" description:"保留旧文件（重命名为.old）"`
+	ForceUpdate    bool    `short:"f" long:"force" description:"强制更新，忽略缓存"`
+	ProxyURL       string  `short:"p" long:"proxy" description:"代理URL（支持http://和socks5://格式）" default:""`
+	CacheExpire    float64 `short:"e" long:"cache-expire" description:"缓存过期时间（小时）" default:"24"`
+	Version        bool    `short:"v" long:"version" description:"显示版本信息"`
 }
 
 const Version = "1.3.1"
@@ -35,6 +37,7 @@ func (config *AppConfig) DisplayConfig() {
 	fmt.Printf("保留旧文件: %v\n", config.KeepOld)
 	fmt.Printf("使用代理: %s\n", config.ProxyURL)
 	fmt.Printf("启用强制更新: %v\n", config.ForceUpdate)
+	fmt.Printf("缓存过期时间: %d小时\n", config.CacheExpire)
 	fmt.Println()
 }
 
@@ -71,7 +74,8 @@ func main() {
 	}
 
 	// 清理过期缓存记录
-	downfile.CleanupExpiredCache(downfile.CacheExpireHours)
+	downfile.CacheExpireHours = config.CacheExpire
+	downfile.CleanupExpiredCache()
 
 	// 创建HTTP客户端配置
 	clientConfig := &downfile.ClientConfig{
