@@ -13,7 +13,7 @@ func ProcessDownItems(client *http.Client, items []DownItem, downloadDir string,
 	successCount := 0
 	for _, item := range items {
 		// 组合最终文件路径 // 不是绝对路径，才拼接下载目录
-		storePath := GetItemFilePath(item, downloadDir)
+		storePath := GetItemFilePath(item.FileName, downloadDir)
 
 		// 检查文件是否存在以及是否需要更新
 		fileExists := FileExists(storePath)

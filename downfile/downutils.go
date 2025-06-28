@@ -92,10 +92,10 @@ func MakeDirs(path string, isFile bool) error {
 	return err
 }
 
-func GetItemFilePath(item DownItem, downloadDir string) string {
-	storePath := item.FileName
-	if !filepath.IsAbs(item.FileName) {
-		storePath = filepath.Join(downloadDir, item.FileName)
+func GetItemFilePath(filename, downloadDir string) string {
+	storePath := filename
+	if !filepath.IsAbs(filename) {
+		storePath = filepath.Join(downloadDir, filename)
 	}
 	return storePath
 }
