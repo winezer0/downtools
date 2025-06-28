@@ -28,7 +28,7 @@ const Version = "v0.0.5"
 
 // DisplayConfig 显示应用配置信息
 func (config *AppConfig) DisplayConfig() {
-	fmt.Printf("自动下载工具 v%s\n", Version)
+	fmt.Printf("自动下载工具 %s\n", Version)
 	fmt.Printf("配置文件: %s\n", config.ConfigFile)
 	fmt.Printf("输出目录: %s\n", config.OutputDir)
 	fmt.Printf("连接超时: %d秒\n", config.ConnectTimeout)
@@ -97,12 +97,12 @@ func main() {
 	successItems := 0
 
 	for groupName, downItems := range downloadConfig {
-		fmt.Printf("\n处理配置组: %s\n", groupName)
 		// 如果未启用enable过滤，则只处理enable=true的项
 		if !appConfig.EnableAll {
 			downItems = downfile.FilterEnableItems(downItems)
 		}
 		if len(downItems) > 0 {
+			fmt.Printf("\n处理配置组: %s\n", groupName)
 			success := downfile.ProcessDownItems(httpClient, downItems, appConfig.OutputDir, appConfig.ForceUpdate, appConfig.KeepOld, appConfig.Retries)
 			totalItems += len(downItems)
 			successItems += success
