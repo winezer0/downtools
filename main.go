@@ -24,7 +24,7 @@ type AppConfig struct {
 	Version        bool    `short:"v" long:"version" description:"显示版本信息"`
 }
 
-const Version = "v0.0.5"
+const Version = "v0.0.6"
 
 // DisplayConfig 显示应用配置信息
 func (config *AppConfig) DisplayConfig() {
@@ -109,5 +109,10 @@ func main() {
 		}
 	}
 
-	fmt.Printf("\n所有下载任务完成: 成功 %d/%d\n", successItems, totalItems)
+	// 清理未完成的下载文件
+	if err := downfile.CleanupIncompleteDownloads(appConfig.OutputDir); err != nil {
+		fmt.Printf("清理未完成下载文件失败: %v\n", err)
+	} else {
+		fmt.Println("未完成下载文件清理完成")
+	}
 }

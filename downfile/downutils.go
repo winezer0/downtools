@@ -2,11 +2,12 @@ package downfile
 
 import (
 	"fmt"
-	"gopkg.in/yaml.v3"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 // LoadConfig 加载配置文件
@@ -110,4 +111,39 @@ func FilterEnableItems(items []DownItem) []DownItem {
 		}
 	}
 	return enabledItems
+}
+
+// CleanupIncompleteDownloads 清理下载目录下未完成的下载文件（以 .download 结尾的文件）
+func CleanupIncompleteDownloads(downloadDir string) error {
+	// 检查下载目录是否存在
+	if _, err := os.Stat(downloadDir); os.IsNotExist(err) {
+		return nil // 目录不存在，直接返回
+	}
+	// 查找所有 .download 文件
+	files, err := FindFilesBySuffix(downloadDir, ".download")
+	if err != nil {
+		return fmt.Errorf("查找未完成下载文件失败: %w", err)
+	}
+	// 删除每个文件
+	for _, file := range files {
+		if err := os.Remove(file); err != nil {
+			fmt.Fprintf(os.Stderr, "警告: 删除未完成下载文件失败 %s: %v\n", file, err)
+		}
+	}
+	return nil
+}
+
+// FindFilesBySuffix 递归查找指定目录下所有以后缀 suffix 结尾的文件
+func FindFilesBySuffix(root, suffix string) ([]string, error) {
+	var files []string
+	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() && strings.HasSuffix(info.Name(), suffix) {
+			files = append(files, path)
+		}
+		return nil
+	})
+	return files, err
 }
