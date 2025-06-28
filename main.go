@@ -20,7 +20,7 @@ type AppConfig struct {
 	ForceUpdate    bool    `short:"f" long:"force" description:"强制更新，忽略缓存"`
 	ProxyURL       string  `short:"p" long:"proxy" description:"代理URL（支持http://和socks5://格式）" default:""`
 	CacheExpire    float64 `short:"E" long:"cache-expire" description:"缓存过期时间（小时）" default:"24"`
-	EnableAll      bool    `short:"e" long:"enable-all" description:"下载所有项 即使enable=false" default:"false"`
+	EnableAll      bool    `short:"e" long:"enable-all" description:"下载所有项 即使enable=false"`
 	Version        bool    `short:"v" long:"version" description:"显示版本信息"`
 }
 

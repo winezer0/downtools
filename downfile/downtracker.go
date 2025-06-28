@@ -159,7 +159,7 @@ func (pt *ProgressTracker) displayKnownSizeProgress() {
 		}
 		remainingTime := time.Duration(remainingSeconds) * time.Second
 
-		fmt.Printf("\r    下载进度: %.1f%% (%s/%s) 速度: %s 剩余时间: %s",
+		fmt.Printf("\r    下载进度: %.1f%% (%s/%s) 速度: %s 剩余时间: %s                    ",
 			progress,
 			formatSize(currentSize),
 			formatSize(pt.FileSize),
@@ -167,14 +167,14 @@ func (pt *ProgressTracker) displayKnownSizeProgress() {
 			formatDuration(remainingTime))
 	} else if pt.Speed > 0 {
 		// 速度极低但不为0，显示速度但不显示剩余时间
-		fmt.Printf("\r    下载进度: %.1f%% (%s/%s) 速度: %s 剩余时间: 未知",
+		fmt.Printf("\r    下载进度: %.1f%% (%s/%s) 速度: %s 剩余时间: 未知                    ",
 			progress,
 			formatSize(currentSize),
 			formatSize(pt.FileSize),
 			speedStr)
 	} else {
 		// 速度为0，等待恢复
-		fmt.Printf("\r    下载进度: %.1f%% (%s/%s) 等待数据传输...",
+		fmt.Printf("\r    下载进度: %.1f%% (%s/%s) 等待数据传输...                    ",
 			progress,
 			formatSize(currentSize),
 			formatSize(pt.FileSize))
@@ -187,11 +187,11 @@ func (pt *ProgressTracker) displayUnknownSizeProgress() {
 	speedStr := formatSize(int64(pt.Speed)) + "/s"
 
 	if pt.Speed > MinValidSpeed {
-		fmt.Printf("\r    已下载: %s 速度: %s",
+		fmt.Printf("\r    已下载: %s 速度: %s                    ",
 			formatSize(currentSize),
 			speedStr)
 	} else {
-		fmt.Printf("\r    已下载: %s 等待数据传输...",
+		fmt.Printf("\r    已下载: %s 等待数据传输...                    ",
 			formatSize(currentSize))
 	}
 }
@@ -204,7 +204,7 @@ func (pt *ProgressTracker) DisplaySummary() {
 	}
 
 	// 清除进度条行
-	fmt.Print("\r                                                                                          \r")
+	fmt.Print("\r                                                                                                                                    \r")
 
 	// 显示总下载时间和平均速度
 	totalTime := time.Since(pt.StartTime)
