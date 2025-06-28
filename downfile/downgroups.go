@@ -54,7 +54,7 @@ func ProcessDownItems(client *http.Client, items []DownItem, downloadDir string,
 				}
 
 				// 使用普通的HTTP请求
-				if err := DownloadFile(client, downloadURL, storePath, keepOld); err != nil {
+				if err := downloadFile(client, downloadURL, storePath, keepOld); err != nil {
 					// 检查是否是404错误
 					var downloadErr DownloadError
 					fmt.Printf("    下载失败: %v\n", err)

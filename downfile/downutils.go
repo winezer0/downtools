@@ -148,7 +148,7 @@ func FindFilesBySuffix(root, suffix string) ([]string, error) {
 	return files, err
 }
 
-func DownloadFileSimple(url string, proxy string) error {
+func DownloadFileSimple(url string, proxy string, storePath string) error {
 	// 创建HTTP客户端配置
 	clientConfig := &ClientConfig{
 		ConnectTimeout: 30,
@@ -159,7 +159,7 @@ func DownloadFileSimple(url string, proxy string) error {
 	if err != nil {
 		return err
 	}
-	err = DownloadFile(httpClient, url, "", false)
+	err = downloadFile(httpClient, url, storePath, false)
 	if err != nil {
 		return err
 	}

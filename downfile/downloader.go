@@ -21,8 +21,8 @@ func (e DownloadError) Error() string {
 	return e.Message
 }
 
-// DownloadFile 下载文件
-func DownloadFile(client *http.Client, downloadUrl, storePath string, keepOldFile bool) error {
+// downloadFile 下载文件
+func downloadFile(client *http.Client, downloadUrl, storePath string, keepOldFile bool) error {
 	// 创建目标文件的目录（如果不存在）
 	if err := os.MkdirAll(filepath.Dir(storePath), 0755); err != nil {
 		return fmt.Errorf("创建目录失败: %w", err)
