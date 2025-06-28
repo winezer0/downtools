@@ -3,9 +3,10 @@ package main
 import (
 	"errors"
 	"fmt"
+	"os"
+
 	"github.com/jessevdk/go-flags"
 	"github.com/winezer0/downtools/downfile"
-	"os"
 )
 
 // AppConfig 应用配置结构体
@@ -18,11 +19,12 @@ type AppConfig struct {
 	KeepOld        bool    `short:"k" long:"keep-old" description:"保留旧文件（重命名为.old）"`
 	ForceUpdate    bool    `short:"f" long:"force" description:"强制更新，忽略缓存"`
 	ProxyURL       string  `short:"p" long:"proxy" description:"代理URL（支持http://和socks5://格式）" default:""`
-	CacheExpire    float64 `short:"e" long:"cache-expire" description:"缓存过期时间（小时）" default:"24"`
+	CacheExpire    float64 `short:"E" long:"cache-expire" description:"缓存过期时间（小时）" default:"24"`
+	EnableAll      bool    `short:"e" long:"enable-all" description:"下载所有项 即使enable=false" default:"false"`
 	Version        bool    `short:"v" long:"version" description:"显示版本信息"`
 }
 
-const Version = "v0.0.3"
+const Version = "v0.0.5"
 
 // DisplayConfig 显示应用配置信息
 func (config *AppConfig) DisplayConfig() {
@@ -36,6 +38,7 @@ func (config *AppConfig) DisplayConfig() {
 	fmt.Printf("使用代理: %s\n", config.ProxyURL)
 	fmt.Printf("启用强制更新: %v\n", config.ForceUpdate)
 	fmt.Printf("缓存过期时间: %d小时\n", config.CacheExpire)
+	fmt.Printf("下载未启用项: %v\n", config.EnableAll)
 	fmt.Println()
 }
 
@@ -95,9 +98,15 @@ func main() {
 
 	for groupName, downItems := range downloadConfig {
 		fmt.Printf("\n处理配置组: %s\n", groupName)
-		success := downfile.ProcessDownItems(httpClient, downItems, appConfig.OutputDir, appConfig.ForceUpdate, appConfig.KeepOld, appConfig.Retries)
-		totalItems += len(downItems)
-		successItems += success
+		// 如果未启用enable过滤，则只处理enable=true的项
+		if !appConfig.EnableAll {
+			downItems = downfile.FilterEnableItems(downItems)
+		}
+		if len(downItems) > 0 {
+			success := downfile.ProcessDownItems(httpClient, downItems, appConfig.OutputDir, appConfig.ForceUpdate, appConfig.KeepOld, appConfig.Retries)
+			totalItems += len(downItems)
+			successItems += success
+		}
 	}
 
 	fmt.Printf("\n所有下载任务完成: 成功 %d/%d\n", successItems, totalItems)

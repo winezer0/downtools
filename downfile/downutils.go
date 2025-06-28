@@ -98,3 +98,16 @@ func GetItemFilePath(item DownItem, downloadDir string) string {
 	}
 	return storePath
 }
+
+// FilterEnableItems 仅保留 enable=true 的配置项
+func FilterEnableItems(items []DownItem) []DownItem {
+	var enabledItems []DownItem
+	if len(items) > 0 {
+		for _, item := range items {
+			if item.Enable {
+				enabledItems = append(enabledItems, item)
+			}
+		}
+	}
+	return enabledItems
+}

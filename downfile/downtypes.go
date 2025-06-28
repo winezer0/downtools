@@ -6,6 +6,7 @@ type DownItem struct {
 	FileName     string   `yaml:"filename"`
 	DownloadURLs []string `yaml:"download-urls"`
 	KeepUpdated  bool     `yaml:"keep-updated"`
+	Enable       bool     `yaml:"enable"`
 }
 
 // DownConfig 配置文件结构
