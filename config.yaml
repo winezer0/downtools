@@ -66,7 +66,7 @@ databases:
       - https://raw.githubusercontent.com/4ft35t/cdn/master/src/cdn.yml
       - https://cdn.jsdelivr.net/gh/winezer0/cdnAnalyzer/assets/cdn.yml
     keep-updated: false
-    enable: false
+    enable: true
 
   - module: cdn-keys
     filename: cloud_keys.yml
@@ -74,7 +74,7 @@ databases:
       - https://github.com/winezer0/cdnAnalyzer/blob/main/assets/cloud_keys.yml
       - https://cdn.jsdelivr.net/gh/winezer0/cdnAnalyzer/assets/cloud_keys.yml
     keep-updated: false
-    enable: false
+    enable: true
 
   - module: cdn-sources_china
     filename: sources_china.json
@@ -82,7 +82,7 @@ databases:
       - https://github.com/hanbufei/isCdn/blob/main/client/data/sources_china.json
       - https://cdn.jsdelivr.net/gh/winezer0/cdnAnalyzer/assets/sources_china.json
     keep-updated: false
-    enable: false
+    enable: true
 
   - module: cdn-sources-foreign
     filename: sources_foreign.json
@@ -91,4 +91,4 @@ databases:
       - https://cdn.jsdelivr.net/gh/projectdiscovery/cdncheck/sources_data.json
       - https://cdn.jsdelivr.net/gh/winezer0/cdnAnalyzer/assets/sources_data.json
     keep-updated: true
-    enable: false
+    enable: true

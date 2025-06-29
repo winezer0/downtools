@@ -37,7 +37,7 @@ func (config *AppConfig) DisplayConfig() {
 	fmt.Printf("保留旧文件: %v\n", config.KeepOld)
 	fmt.Printf("使用代理: %s\n", config.ProxyURL)
 	fmt.Printf("启用强制更新: %v\n", config.ForceUpdate)
-	fmt.Printf("缓存过期时间: %d小时\n", config.CacheExpire)
+	fmt.Printf("缓存过期时间: %v小时\n", config.CacheExpire)
 	fmt.Printf("下载未启用项: %v\n", config.EnableAll)
 	fmt.Println()
 }
