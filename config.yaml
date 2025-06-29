@@ -76,7 +76,7 @@ databases:
     keep-updated: false
     enable: true
 
-  - module: cdn-sources_china
+  - module: cdn-sources-china
     filename: sources_china.json
     download-urls:
       - https://github.com/hanbufei/isCdn/blob/main/client/data/sources_china.json
