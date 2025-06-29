@@ -24,7 +24,7 @@ type AppConfig struct {
 	Version        bool    `short:"v" long:"version" description:"显示版本信息"`
 }
 
-const Version = "v0.0.6"
+const Version = "v0.0.9"
 
 // DisplayConfig 显示应用配置信息
 func (config *AppConfig) DisplayConfig() {
